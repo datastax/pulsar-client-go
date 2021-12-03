@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,15 +106,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	}
 
 	if options.MessageRouter == nil {
-		internalRouter := NewDefaultRouter(
-			getHashingFunction(options.HashingScheme),
-			options.BatchingMaxMessages,
-			options.BatchingMaxSize,
-			options.BatchingMaxPublishDelay,
-			options.DisableBatching)
-		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
-			return internalRouter(message, metadata.NumPartitions())
-		}
+		p.messageRouter = defaultInternalRouterFunc(options)
 	} else {
 		p.messageRouter = options.MessageRouter
 	}
@@ -133,6 +126,18 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 
 	p.metrics.ProducersOpened.Inc()
 	return p, nil
+}
+
+func defaultInternalRouterFunc(options *ProducerOptions) func(message *ProducerMessage, metadata TopicMetadata) int {
+	internalRouter := NewDefaultRouter(
+		getHashingFunction(options.HashingScheme),
+		options.BatchingMaxMessages,
+		options.BatchingMaxSize,
+		options.BatchingMaxPublishDelay,
+		options.DisableBatching)
+	return func(message *ProducerMessage, metadata TopicMetadata) int {
+		return internalRouter(message, metadata.NumPartitions())
+	}
 }
 
 func (p *producer) runBackgroundPartitionDiscovery(period time.Duration) (cancel func()) {
@@ -259,17 +264,32 @@ func (p *producer) NumPartitions() uint32 {
 }
 
 func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
+	if msg == nil {
+		return nil, errors.New("invalid message")
+	}
 	return p.getPartition(msg).Send(ctx, msg)
 }
 
 func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error)) {
-	p.getPartition(msg).SendAsync(ctx, msg, callback)
+	if msg == nil {
+		callback(nil, msg, errors.New("invalid message"))
+	} else {
+		p.getPartition(msg).SendAsync(ctx, msg, callback)
+	}
 }
 
 func (p *producer) getPartition(msg *ProducerMessage) Producer {
 	// Since partitions can only increase, it's ok if the producers list
 	// is updated in between. The numPartition is updated only after the list.
+
+	p.Lock()
+	if p.messageRouter == nil {
+		p.log.Warnf("messageRouter re-assignment under topic %s", p.topic)
+		p.messageRouter = defaultInternalRouterFunc(p.options)
+	}
+	p.Unlock()
+
 	partition := p.messageRouter(msg, p)
 	producers := *(*[]Producer)(atomic.LoadPointer(&p.producersPtr))
 	if partition >= len(producers) {
