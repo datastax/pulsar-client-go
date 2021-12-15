@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,6 +44,8 @@ const (
 
 	// defaultPartitionsAutoDiscoveryInterval init default time interval for partitions auto discovery
 	defaultPartitionsAutoDiscoveryInterval = 1 * time.Minute
+
+	nilProducer = "producer is not initialized"
 )
 
 type producer struct {
@@ -244,10 +247,16 @@ func (p *producer) internalCreatePartitionsProducers() error {
 }
 
 func (p *producer) Topic() string {
+	if p == nil {
+		return ""
+	}
 	return p.topic
 }
 
 func (p *producer) Name() string {
+	if p == nil {
+		return ""
+	}
 	p.RLock()
 	defer p.RUnlock()
 
@@ -255,16 +264,26 @@ func (p *producer) Name() string {
 }
 
 func (p *producer) NumPartitions() uint32 {
+	if p == nil {
+		return 0
+	}
 	return atomic.LoadUint32(&p.numPartitions)
 }
 
 func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
+	if p == nil {
+		return nil, errors.New(nilProducer)
+	}
 	return p.getPartition(msg).Send(ctx, msg)
 }
 
 func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error)) {
-	p.getPartition(msg).SendAsync(ctx, msg, callback)
+	if p == nil {
+		callback(nil, nil, errors.New(nilProducer))
+	} else {
+		p.getPartition(msg).SendAsync(ctx, msg, callback)
+	}
 }
 
 func (p *producer) getPartition(msg *ProducerMessage) Producer {
@@ -281,6 +300,9 @@ func (p *producer) getPartition(msg *ProducerMessage) Producer {
 }
 
 func (p *producer) LastSequenceID() int64 {
+	if p == nil {
+		return -1
+	}
 	p.RLock()
 	defer p.RUnlock()
 
@@ -295,6 +317,9 @@ func (p *producer) LastSequenceID() int64 {
 }
 
 func (p *producer) Flush() error {
+	if p == nil {
+		return errors.New(nilProducer)
+	}
 	p.RLock()
 	defer p.RUnlock()
 
@@ -308,6 +333,9 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) Close() {
+	if p == nil {
+		return
+	}
 	p.closeOnce.Do(func() {
 		p.stopDiscovery()
 

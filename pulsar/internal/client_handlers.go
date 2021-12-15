@@ -22,40 +22,39 @@ import "sync"
 // ClientHandlerMap is a simple concurrent-safe map for the client type
 type ClientHandlers struct {
 	handlers map[Closable]bool
-	l        *sync.RWMutex
+	sync.RWMutex
 }
 
 func NewClientHandlers() ClientHandlers {
 	return ClientHandlers{
 		handlers: map[Closable]bool{},
-		l:        &sync.RWMutex{},
 	}
 }
 func (h *ClientHandlers) Add(c Closable) {
-	h.l.Lock()
-	defer h.l.Unlock()
+	h.Lock()
+	defer h.Unlock()
 	h.handlers[c] = true
 }
 
 func (h *ClientHandlers) Del(c Closable) {
-	h.l.Lock()
-	defer h.l.Unlock()
+	h.Lock()
+	defer h.Unlock()
 	delete(h.handlers, c)
 }
 
 func (h *ClientHandlers) Val(c Closable) bool {
-	h.l.RLock()
-	defer h.l.RUnlock()
+	h.RLock()
+	defer h.RUnlock()
 	return h.handlers[c]
 }
 
 func (h *ClientHandlers) Close() {
-	h.l.Lock()
+	h.Lock()
 	handlers := make([]Closable, 0, len(h.handlers))
 	for handler := range h.handlers {
 		handlers = append(handlers, handler)
 	}
-	h.l.Unlock()
+	h.Unlock()
 
 	for _, handler := range handlers {
 		handler.Close()
