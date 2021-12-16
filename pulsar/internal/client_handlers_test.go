@@ -25,7 +25,6 @@ import (
 
 func TestClientHandlers(t *testing.T) {
 	h := NewClientHandlers()
-	assert.NotNil(t, h.l)
 	assert.Equal(t, h.handlers, map[Closable]bool{})
 
 	closable := &testClosable{h: &h, closed: false}
@@ -39,7 +38,6 @@ func TestClientHandlers(t *testing.T) {
 
 func TestClientHandlers_Del(t *testing.T) {
 	h := NewClientHandlers()
-	assert.NotNil(t, h.l)
 	assert.Equal(t, h.handlers, map[Closable]bool{})
 
 	closable1 := &testClosable{h: &h, closed: false}
