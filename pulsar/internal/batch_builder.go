@@ -158,6 +158,10 @@ func (bc *batchContainer) IsFull() bool {
 // hasSpace should return true if and only if the batch container can accommodate another message of length payload.
 func (bc *batchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
+	// make sure at least one message can be added to batch
+	if bc.numMessages == 0 {
+		return true
+	}
 	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize)
 }
 
